@@ -195,7 +195,75 @@ class MultiModalQdrantVectorStore(QdrantVectorStore):
             query (VectorStoreQuery): query
         """
         
-        return super().query(query, **kwargs)
+
+        query_embedding = cast(List[float], query.query_embedding)
+        #  NOTE: users can pass in qdrant_filters (nested/complicated filters) to override the default MetadataFilters
+        qdrant_filters = kwargs.get("qdrant_filters")
+        if qdrant_filters is not None:
+            query_filter = qdrant_filters
+        else:
+            query_filter = cast(Filter, self._build_query_filter(query))
+
+
+        
+        if (
+            query.mode == VectorStoreQueryMode.SPARSE
+            and self.enable_hybrid
+            and self._sparse_query_fn is not None
+            and query.query_str is not None
+        ):
+            sparse_indices, sparse_embedding = self._sparse_query_fn(
+                [query.query_str],
+            )
+            sparse_top_k = query.sparse_top_k or query.similarity_top_k
+
+            sparse_response = self._client.search_batch(
+                collection_name=self.collection_name,
+                requests=[
+                    rest.SearchRequest(
+                        vector=rest.NamedSparseVector(
+                            name="text-sparse",
+                            vector=rest.SparseVector(
+                                indices=sparse_indices[0],
+                                values=sparse_embedding[0],
+                            ),
+                        ),
+                        limit=sparse_top_k,
+                        filter=query_filter,
+                        with_payload=True,
+                        with_vector=True,
+                    ),
+                ],
+            )
+            return self.parse_image_to_query_result(sparse_response[0])
+
+        elif self.enable_hybrid:
+            # search for dense vectors only
+            response = self._client.search_batch(
+                collection_name=self.collection_name,
+                requests=[
+                    rest.SearchRequest(
+                        vector=rest.NamedVector(
+                            name="text-dense",
+                            vector=query_embedding,
+                        ),
+                        limit=query.similarity_top_k,
+                        filter=query_filter,
+                        with_payload=True,
+                        with_vector=True
+                    ),
+                ],
+            )
+
+            return self.parse_image_to_query_result(response[0])
+        else:
+            response = self._client.search(
+                collection_name=self.collection_name,
+                query_vector=query_embedding,
+                limit=query.similarity_top_k,
+                query_filter=query_filter,
+            )
+            return self.parse_image_to_query_result(response)
 
 
 
@@ -230,6 +298,7 @@ class MultiModalQdrantVectorStore(QdrantVectorStore):
                     limit=query.similarity_top_k,
                     filter=query_filter,
                     with_payload=True,
+                    with_vector=True,
                 ),
             ],
         )
@@ -276,7 +345,7 @@ class MultiModalQdrantVectorStore(QdrantVectorStore):
                     metadata=payload.get("metadata"),
                     #relationships=relationships,
                 )
-
+            node.metadata["vectors"] = point.vector
                   
 
 
