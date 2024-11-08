@@ -5,7 +5,7 @@ from llama_index.legacy.vector_stores import VectorStoreQuery
 from llama_index.legacy.vector_stores.types import VectorStoreQueryMode
 from llama_index.legacy.vector_stores.qdrant import QdrantVectorStore
 from llama_index.legacy.schema import QueryType
-from custom_vectore_store import MultiModalQdrantVectorStore
+from .custom_vectore_store import MultiModalQdrantVectorStore
 from typing import Any, List, Optional
 
 import numpy as np
@@ -125,7 +125,7 @@ class MultiModalQdrantRetriever(BaseRetriever):
             raise ValueError(f"Invalid text-to-text query mode: {query_mode}, must be one of ['default', 'sparse', 'hybrid']")
 
 
-    def rerank_text_nodes(self, query_bundle: QueryBundle, text_retrieval_result):
+    def rerank_text_nodes(self, query_bundle: QueryBundle, text_retrieval_result, text_rerank_top_n = None):
 
         text_node_ids, text_nodes = [], []
         # text_node_ids, text_node, text_node_scores = [], [], []
@@ -134,6 +134,12 @@ class MultiModalQdrantRetriever(BaseRetriever):
             text_node_ids += text_retrieval_result[key].ids
             text_nodes += text_retrieval_result[key].nodes
             # text_node_scores += text_retrieval_result[key].similarities
+
+        if text_rerank_top_n is None:
+            text_rerank_top_n = self._text_rerank_top_n
+        else:
+            text_rerank_top_n = min(text_rerank_top_n, len(text_nodes))
+        self._reranker.top_n = text_rerank_top_n
 
         # drop duplicate nodes from sparse retrival and dense retrival        
         unique_node_indices = list(set([text_node_ids.index(x) for x in text_node_ids if text_node_ids.count(x) >= 1]))
@@ -236,7 +242,8 @@ class MultiModalQdrantRetriever(BaseRetriever):
 
 
 
-    def rerank_image_nodes(self, query_bundle: QueryBundle, image_retrieval_result):
+    def rerank_image_nodes(self, query_bundle: QueryBundle, image_retrieval_result, image_rerank_top_n = None):
+       
         image_nodes, image_node_ids =  [], []
         for key in image_retrieval_result.keys():
             image_node_ids += image_retrieval_result[key].ids
@@ -248,8 +255,13 @@ class MultiModalQdrantRetriever(BaseRetriever):
 
         unique_node_indices = list(set([image_node_ids.index(x) for x in image_node_ids if image_node_ids.count(x) >= 1]))
         image_node_nodes = [image_nodes[i] for i in unique_node_indices]
-
-        query_str="How does Llama 2 perform compared to other open-source models?"
+        
+        if image_rerank_top_n is None:
+            image_rerank_top_n = self._image_rerank_top_n
+        else:
+            image_rerank_top_n = min(image_rerank_top_n, len(image_node_nodes))
+                                     
+        query_str = query_bundle.query_str
         similarity_scores = {key: [] for key in image_retrieval_result.keys()}
 
         for key in image_retrieval_result.keys():
@@ -281,7 +293,7 @@ class MultiModalQdrantRetriever(BaseRetriever):
 
         rerank_score_with_index = list(zip(rerank_scores, range(len(image_node_nodes))))
         rerank_score_with_index = sorted(rerank_score_with_index, key=lambda x: x[0], reverse=True)
-        topn_image_nodes = [NodeWithScore(node=image_node_nodes[_[1]], score=_[0]) for _ in rerank_score_with_index][:self._image_rerank_top_n]
+        topn_image_nodes = [NodeWithScore(node=image_node_nodes[_[1]], score=_[0]) for _ in rerank_score_with_index][:image_rerank_top_n]
 
         for node in topn_image_nodes:
             node.node.metadata['vectors'] = None

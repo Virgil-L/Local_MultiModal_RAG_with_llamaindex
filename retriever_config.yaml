@@ -1,0 +1,18 @@
+qdrant_path: qdrant_db
+splade_query_path: ./models/embedding_models/efficient-splade-VI-BT-large-doc
+splade_doc_path: ./models/embedding_models/efficient-splade-VI-BT-large-query
+
+embedding_path: ./models/embedding_models/bge-small-en-v1.5
+image_encoder_path: ./models/embedding_models/clip-vit-base-patch32
+reranker_path: ./models/embedding_models/bge-reranker-base
+
+text_collection_name: text_collection
+image_collection_name: image_collection
+
+text_similarity_top_k: 5
+text_sparse_top_k: 5
+text_rerank_top_n: 3
+
+image_similarity_top_k: 5
+image_sparse_top_k: 5
+image_rerank_top_n: 1

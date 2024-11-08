@@ -313,7 +313,7 @@ if __name__ == "__main__":
         bge_embedding=bge_embedding, 
         )
 
-    image_nodes = build_image_nodes(
+    image_nodes = build_image_nodes(  
         pdf_folder = args.pdf_folder, 
         bge_embedding = bge_embedding, 
         clip_embedding = clip_embedding,
